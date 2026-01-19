@@ -20,7 +20,7 @@ let myKeywords = [
     '안트로젠', '아이진', '펩트론', '인벤티지랩'
 ];
 
-let filterKeywords = ['승인', '허가', '획득', 'FDA', 'NDA', '샌드박스', 'CSR', '결과보고서', '성공', 'L/O', '계약', '공시'];
+let filterKeywords = ['승인', '허가', '특허','획득', 'FDA', 'NDA', '샌드박스', 'CSR', '결과보고서', '성공', 'L/O', '계약', '공시'];
 
 class BaseScraper {
     constructor(keyword) {
@@ -252,51 +252,6 @@ class DailyPharm extends BaseScraper {
     }
 }
 
-class MedicalTimes extends BaseScraper {
-    async getNewsList() {
-        const searchUrl = `https://www.medicaltimes.com/Main/Search.php?keyword=${this.encodedKeyword}&x=0&y=0`;
-        const $ = await this.fetch(searchUrl);
-        if (!$) {
-            console.warn(`[MedicalTimes] Fetch 실패: ${searchUrl}`);
-            return [];
-        }
-
-        const list = [];
-        const base = 'https://www.medicaltimes.com';
-
-        $('article.newsList_cont').each((i, el) => {
-            const $article = $(el);
-
-            const $link = $article.find('a').first();
-            if (!$link.length) return;
-
-            const href = $link.attr('href');
-            if (!href) return;
-
-            const title = $article.find('h4.headLine').text().trim();
-            if (!title) return;
-
-            // 날짜: span.newsList_cont_date의 첫 부분 (YYYY-MM-DD HH:mm:ss)
-            const dateFull = $article.find('span.newsList_cont_date').contents().first().text().trim(); // 텍스트 노드 첫 번째
-            const dateText = dateFull.split(' ')[0] || dateFull;  // 시간 부분 제거하고 날짜만 (혹시 모를 대비)
-
-            if (this.isToday(dateText)) {
-                const link = this.makeAbsoluteUrl(href, base);
-                if (title && link) {
-                    list.push({ title, link });
-                }
-            }
-        });
-
-        console.log(`[MedicalTimes] 오늘(2026-01-19) 발견 기사: ${list.length}건`);
-        if (list.length === 0) {
-            console.log('[MedicalTimes 디버그] 가장 최근 날짜 예시:', 
-                $('span.newsList_cont_date').first().text().trim() || '없음');
-        }
-
-        return list;
-    }
-}
 
 // 나머지 스크래퍼들도 동일 패턴으로 개선 (HitNews, MediPharmToday, MedicalNews, MoneyToday)
 // 여기서는 공간상략 → 위 패턴 따라가면 됨
@@ -456,7 +411,6 @@ const scrapersMap = {
     '팜뉴스': PharmNews,
     '약업닷컴': Yakup,
     '데일리팜': DailyPharm,
-    '메디칼타임즈': MedicalTimes,
     '히트뉴스': HitNews,           // 클래스 정의 필요 (위 패턴 참고)
     '메디팜스투데이': MediPharmToday,
     '의학신문': MedicalNews,
@@ -486,11 +440,14 @@ async function runMonitoring(chatId) {
                 for (const item of items) {
                     if (!scraper.validate(item.title)) continue;
 
-                    const hasFilter = filterKeywords.length === 0 ||
-                        filterKeywords.some(f => item.title.includes(f));
+                    // 필터링 로직 강화 (공백 제거 및 대소문자 통합)
+                    const normalizedTitle = item.title.replace(/\s+/g, ' ').trim();
+                    const hasFilter = filterKeywords.length === 0 || 
+                                    filterKeywords.some(f => normalizedTitle.toLowerCase().includes(f.trim().toLowerCase()));
 
                     if (!hasFilter) {
-                        console.log(`  └ 필터 미충족 : ${item.title}`);
+                        // 왜 필터 미충족인지 디버깅 로그 남기기
+                        console.log(`  └ 필터 미충족: ${normalizedTitle}`); 
                         continue;
                     }
 
@@ -509,13 +466,13 @@ async function runMonitoring(chatId) {
             } catch (e) {
                 console.error(`[${name}] 에러 : ${e.message}`);
             }
-            await new Promise(r => setTimeout(r, 400)); // 딜레이 조금 더 늘림
+            await new Promise(r => setTimeout(r, 200)); // 딜레이 조금 더 늘림
         }
     } catch (err) {
         console.error('runMonitoring 에러:', err);
     }
 
-    playAlert = setTimeout(() => runMonitoring(chatId), 15000); // 15초
+    playAlert = setTimeout(() => runMonitoring(chatId), 5000); // 15초
 }
 
 /**
