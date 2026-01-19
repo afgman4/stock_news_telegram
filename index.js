@@ -3,7 +3,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const moment = require('moment');
 
-const token = '';
+const token = '8483984900:AAH3mF9GKrXb8s8k7DefCfke7Xw6J9FzpDs';
 const bot = new TelegramBot(token, { polling: true });
 
 let check = false;
