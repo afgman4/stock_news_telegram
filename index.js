@@ -10,10 +10,15 @@ const token = '8580951991:AAGVAlC_sjm7g8vYBlU1yaD4NL0EZ1MwHbg';
 const bot = new TelegramBot(token, { polling: true });
 
 let check = false;
+let isTestMode = false; // 테스트 모드 여부
 let playAlert = null;
 let compare_map = new Map();
 let daily_keyword_map = new Set();
 let last_reset_date = moment().format('YYYYMMDD');
+
+// --- 설정: 작동 시간 (8시 ~ 20시) ---
+const START_HOUR = 8;
+const END_HOUR = 20;
 
 const myKeywords = ['바이젠셀', '코아스템켐온', '비피도', '큐리오시스', '젠큐릭스', '큐라클', '압타바이오', '퓨쳐켐', '메지온', '지아이이노베이션', '에이프릴바이오', '큐리언트', '티움바이오', '앱클론', '오스코텍', '박셀바이오', '지씨셀', '셀리드', '제넥신', '유틸렉스', '고바이오랩', '올릭스', '코오롱티슈진', '디앤디파마텍', '보로노이', '샤페론', '브릿지바이오테라퓨틱스', '에스씨엠생명과학', '카이노스메드', '이수앱지스', '안트로젠', '아이진', '펩트론', '인벤티지랩', '큐로셀', '바이오다인', '메드팩토', '와이바이오로직스', '에이비온', '지노믹트리', '파로스아이바이오', '신테카바이오', '에스엘바이오닉스', '에이비엘바이오', '지투지바이오', '나이벡', '레고켐바이오', '에스티팜'];
 
@@ -43,14 +48,26 @@ const scrapMap = {
 
 async function runMonitoring(chatId) {
     if (!check) return;
-    const logTime = () => moment().format('HH:mm:ss');
-    const today = moment().format('YYYYMMDD');
+const now = moment();
+    const currentHour = now.hour();
+    const logTime = () => now.format('HH:mm:ss');
+    const today = now.format('YYYYMMDD');
+
+
+    // --- [시간 제한 로직] 테스트 모드가 아닐 때만 작동 ---
+    if (!isTestMode && (currentHour < START_HOUR || currentHour >= END_HOUR)) {
+        console.log(`[${logTime()}] 😴 휴식 시간 (테스트 모드 아님). 10분 후 재확인.`);
+        playAlert = setTimeout(() => runMonitoring(chatId), 10 * 60 * 1000);
+        return;
+    }
 
     if (last_reset_date !== today) {
         daily_keyword_map.clear();
         compare_map.clear();
         last_reset_date = today;
     }
+
+    console.log(`[${logTime()}] 🔍 뉴스 검색 시작...`);
 
     let fetchTasks = [
         ...Object.entries(rssMap).map(async ([site, url]) => {
@@ -174,12 +191,43 @@ async function runMonitoring(chatId) {
 
 bot.onText(/\/on/, (msg) => {
     check = true;
-    bot.sendMessage(msg.chat.id, "🚀 <b>정밀 분석 가동 (바이젠셀 악재 감지 포함)</b>");
+    isTestMode = false; // 일반 모드
+    bot.sendMessage(msg.chat.id, `🚀 <b>일반 분석 가동</b>\n⌚ 작동시간: ${START_HOUR}시 ~ ${END_HOUR}시`);
+    runMonitoring(msg.chat.id);
+});
+
+bot.onText(/\/test/, (msg) => {
+    check = true;
+    isTestMode = true; // 테스트 모드 (시간 무시)
+    bot.sendMessage(msg.chat.id, `🧪 <b>테스트 모드 가동</b>\n⌚ 시간 제한 없이 즉시 분석합니다.`);
     runMonitoring(msg.chat.id);
 });
 
 bot.onText(/\/off/, (msg) => {
     check = false;
+    isTestMode = false;
     clearTimeout(playAlert);
-    bot.sendMessage(msg.chat.id, "🛑 <b>중지</b>");
+    bot.sendMessage(msg.chat.id, "🛑 <b>모니터링 중지</b>");
+});
+
+bot.onText(/\/help/, (msg) => {
+    let helpMsg = `📖 <b>바이오 속보 모니터링 봇 사용 가이드</b>\n\n`;
+    
+    helpMsg += `✅ <b>기본 명령어</b>\n`;
+    helpMsg += `🚀 /on : 일반 가동 (08:00~20:00 작동)\n`;
+    helpMsg += `🧪 /test : 테스트 모드 (시간 무관 즉시 작동)\n`;
+    helpMsg += `🛑 /off : 모니터링 즉시 중지\n\n`;
+
+    helpMsg += `🔍 <b>감시 매체</b>\n`;
+    helpMsg += `연합뉴스, 이데일리, 데일리팜, 히트뉴스, 약업닷컴 등\n\n`;
+
+    helpMsg += `💡 <b>주요 필터링 원리</b>\n`;
+    helpMsg += `1️⃣ <b>제목 우선:</b> 제목에 악재 단어 포함 시 즉시 제외\n`;
+    helpMsg += `2️⃣ <b>본문 정밀:</b> 모호한 뉴스도 본문 분석 후 호재 탐지\n`;
+    helpMsg += `3️⃣ <b>강력 호재:</b> [승인/만장일치/체결] 등은 오탐지 방어 작동\n`;
+    helpMsg += `4️⃣ <b>집중 감시:</b> '바이젠셀'은 악재 시 즉시 긴급 알림\n\n`;
+
+    helpMsg += `⚠️ <i>매일 자정 중복 방지 데이터가 초기화됩니다.</i>`;
+
+    bot.sendMessage(msg.chat.id, helpMsg, { parse_mode: 'HTML' });
 });
