@@ -15,22 +15,22 @@ let compare_map = new Map();
 let daily_keyword_map = new Set();
 let last_reset_date = moment().format('YYYYMMDD');
 
-const myKeywords = ['코아스템켐온', '비피도', '큐리오시스', '바이젠셀', '젠큐릭스', '큐라클', '압타바이오', '퓨쳐켐', '메지온', '지아이이노베이션', '에이프릴바이오', '큐리언트', '티움바이오', '앱클론', '오스코텍', '박셀바이오', '지씨셀', '셀리드', '제넥신', '유틸렉스', '고바이오랩', '올릭스', '코오롱티슈진', '디앤디파마텍', '보로노이', '샤페론', '브릿지바이오테라퓨틱스', '에스씨엠생명과학', '카이노스메드', '이수앱지스', '안트로젠', '아이진', '펩트론', '인벤티지랩', '큐로셀', '바이오다인', '메드팩토', '와이바이오로직스', '에이비온', '지노믹트리', '파로스아이바이오', '신테카바이오', '에스엘바이오닉스', '에이비엘바이오', '지투지바이오', '나이벡', '레고켐바이오', '에스티팜'];
+const myKeywords = ['바이젠셀', '코아스템켐온', '비피도', '큐리오시스', '젠큐릭스', '큐라클', '압타바이오', '퓨쳐켐', '메지온', '지아이이노베이션', '에이프릴바이오', '큐리언트', '티움바이오', '앱클론', '오스코텍', '박셀바이오', '지씨셀', '셀리드', '제넥신', '유틸렉스', '고바이오랩', '올릭스', '코오롱티슈진', '디앤디파마텍', '보로노이', '샤페론', '브릿지바이오테라퓨틱스', '에스씨엠생명과학', '카이노스메드', '이수앱지스', '안트로젠', '아이진', '펩트론', '인벤티지랩', '큐로셀', '바이오다인', '메드팩토', '와이바이오로직스', '에이비온', '지노믹트리', '파로스아이바이오', '신테카바이오', '에스엘바이오닉스', '에이비엘바이오', '지투지바이오', '나이벡', '레고켐바이오', '에스티팜'];
 
-// 패턴 보강: '통과', '선정', '승인' 등을 아주 유연하게 매칭 (.* 사용)
-const goodNewsPattern = new RegExp("(CSR|톱라인|Top-line|FDA|CSR|승인|허가|심사.*?(통과|승인)|선정|획득|NDA|임상.*?상|성공|L/O|기술.*?수출|계약|공급|체결)", "i");
-const badNewsPattern = new RegExp("(검찰|횡령|배임|상장.*?폐지|관리.*?종목|임상.*?중단|채용|실패|반려|부적격|불성실|허위|조작|철회)", "i");
+// 호재 패턴: '결과보고서', '유의성 확보', '지표 달성' 등 긍정 문구 강화
+const goodNewsPattern = new RegExp("(CSR|톱라인|Top-line|FDA|승인|허가|심사.*?(통과|승인)|획득|NDA|임상\\s*[1-3]상|결과보고서|성공|L/O|기술\\s*수출|계약|공급|체결|통계적\\s*유의성|유의성\\s*확보|지표\\s*달성|만장일치|확보|)", "i");
+
+// 악재 패턴: '미달성', '확보 실패', '유의성 미확보' 등 부정 문구 강화
+const badNewsPattern = new RegExp("(검찰\\s*조사|횡령|배임|채용|상장\\s*폐지|관리\\s*종목|임상\\s*중단|실패|반려|부적격|불성실|허위|조작|실패|미달성|확보\\s*실패|유의성\\s*미확보|유의성\\s*결여|결과보고서\\s*미달성|철회)", "i");
+
+// 본문 호재 패턴
+const bodyGoodNewsPattern = new RegExp("(승인|만장일치|체결|확보|)", "i");
 
 const getAxiosConfig = () => ({
     timeout: 10000,
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
     httpsAgent: new https.Agent({ rejectUnauthorized: false, secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT })
 });
-
-const formatMtTime = (dtStr) => {
-    if (!dtStr || dtStr.length < 14) return moment().format('HH:mm:ss');
-    return `${dtStr.substring(8, 10)}:${dtStr.substring(10, 12)}:${dtStr.substring(12, 14)}`;
-};
 
 const escapeHTML = (str) => str ? str.replace(/[&<>]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[tag] || tag)) : "";
 
@@ -74,76 +74,107 @@ async function runMonitoring(chatId) {
                     return title && title.length > 5 ? { title, link, site, time: logTime() } : null;
                 }).get().filter(n => n).slice(0, 15);
             } catch (e) { return []; }
-        }),
-        (async () => {
-            try {
-                const res = await axios.get('https://www.mt.co.kr/api/hits/realtime?limit=15', getAxiosConfig());
-                return res.data.data.item.map(a => ({ title: a.title, link: a.article_url, site: '머니투데이', time: formatMtTime(a.display_dt) }));
-            } catch (e) { return []; }
-        })()
+        })
     ];
 
     const allNews = (await Promise.all(fetchTasks)).flat();
 
+    // --- 핵심 모니터링 로직 수정 부분 ---
     for (const news of allNews) {
         let matchedKeyword = myKeywords.find(k => news.title.includes(k));
-        
         if (!matchedKeyword) continue;
         if (daily_keyword_map.has(matchedKeyword)) continue; 
 
         const uniqueKey = `${news.site}_${news.title}`;
         if (compare_map.has(uniqueKey)) continue;
 
+        // [1단계] 제목에서 즉시 패턴 확인
         let goodMatch = news.title.match(goodNewsPattern);
-        let foundSource = "제목";
-        let contextText = "";
+        let badMatch = news.title.match(badNewsPattern);
 
-        // 제목에 없으면 본문/부제목 스캔
-        if (news.link && news.link.startsWith('http')) {
+        // [2단계] 바이젠셀 특수 로직: 제목에 악재 있으면 즉시 전송 후 다음 기사로 skip
+        if (matchedKeyword === '바이젠셀' && badMatch) {
+            sendAlert(chatId, news, matchedKeyword, null, badMatch, "🚨 제목 악재 포착");
+            continue; // 본문 스캔 필요 없음
+        }
+
+        // [3단계] 일반 종목 로직: 제목에 악재가 있으면 호재고 뭐고 즉시 제외 (본문 볼 필요 없음)
+        if (badMatch) {
+            console.log(`\x1b[33m[제외][제목악재][${matchedKeyword}] ${news.title.substring(0, 30)}...\x1b[0m`);
+            continue; 
+        }
+
+        // [4단계] 본문 정밀 스캔 (제목에 호재가 없거나, 더 구체적인 문맥을 찾고 싶을 때)
+        let contextText = "";
+        if (!goodMatch && news.link && news.link.startsWith('http')) {
             try {
-                console.log(`\x1b[90m[분석중] ${news.site} - ${matchedKeyword} ${news.title} ${news.link}\x1b[0m`);
                 await new Promise(r => setTimeout(r, 600)); 
                 const detailRes = await axios.get(news.link, getAxiosConfig());
                 const $detail = cheerio.load(detailRes.data);
-                
-                // 약업닷컴 부제목(text02_con) 및 본문 전체 포함
-                const bodyText = $detail('.contents_con, article, .article_body, #newsEndContents, #dic_area, .at-content, #newsct_article')
-                    .text().replace(/\s+/g, ' ').trim();
+                const bodyText = $detail('.contents_con, article, .article_body, #newsEndContents, #dic_area, .at-content, #newsct_article').text().replace(/\s+/g, ' ').trim();
 
-                let bodyGoodMatch = bodyText.match(goodNewsPattern);
+                // 1. 본문 악재 체크 (바이젠셀이 아닐 경우 더 엄격하게 체크)
+                const bodyBadMatch = bodyText.match(badNewsPattern);
                 
-                if (bodyGoodMatch) {
-                    goodMatch = bodyGoodMatch;
-                    foundSource = "본문/부제목";
-                    const idx = bodyText.indexOf(goodMatch[0]);
-                    contextText = "..." + bodyText.substring(Math.max(0, idx - 45), idx + 55).trim() + "...";
+                // [수정] 제목이 이미 강력한 호재(승인, 만장일치 등)인 경우 본문의 사소한 단어로 제외하지 않음
+                if (bodyBadMatch && !news.title.match(bodyGoodNewsPattern)) {
+                    if (matchedKeyword === '바이젠셀') {
+                        sendAlert(chatId, news, matchedKeyword, null, bodyBadMatch, bodyText);
+                    } else {
+                        console.log(`\x1b[33m[제외][본문악재][${matchedKeyword}] ${news.title.substring(0, 30)}...\x1b[0m`);
+                    }
+                    continue;
+                }
+
+                // 2. 본문 호재 탐색
+                if (!goodMatch) {
+                    goodMatch = bodyText.match(goodNewsPattern);
+                    if (goodMatch) {
+                        const idx = bodyText.indexOf(goodMatch[0]);
+                        contextText = "..." + bodyText.substring(Math.max(0, idx - 45), idx + 55).trim() + "...";
+                    }
                 }
             } catch (e) { }
         }
 
-        if (goodMatch && !badNewsPattern.test(news.title)) {
-            compare_map.set(uniqueKey, true);
-            daily_keyword_map.add(matchedKeyword); 
-
-            let msg = `🔔 <b>초정밀 탐지 성공 (${foundSource})</b>\n\n`;
-            msg += `📌 <b>종목:</b> #${escapeHTML(matchedKeyword)}\n`;
-            msg += `🎯 <b>탐지단어:</b> #${escapeHTML(goodMatch[0])}\n`;
-            if (contextText) msg += `📝 <b>매칭문맥:</b> <code>${escapeHTML(contextText)}</code>\n\n`;
-            msg += `📰 <b>매체:</b> ${news.site}\n`;
-            msg += `⌚ <b>시간:</b> ${news.time}\n`;
-            msg += `📝 <b>제목:</b> ${escapeHTML(news.title)}\n\n`;
-            msg += `🔗 <b>기사원문:</b> ${news.link}`;
-
-            bot.sendMessage(chatId, msg, { parse_mode: 'HTML', disable_web_page_preview: false });
-            console.log(`\x1b[1m\x1b[32m[전송][${foundSource}][${matchedKeyword}] ${news.title}\x1b[0m`);
+        // [5단계] 최종 전송 판단
+        if (goodMatch) {
+            sendAlert(chatId, news, matchedKeyword, goodMatch, null, contextText);
         }
+    }
+
+    // --- 중복 메시지 전송 함수화 ---
+    function sendAlert(chatId, news, keyword, goodMatch, badMatch, context) {
+        const uniqueKey = `${news.site}_${news.title}`;
+        compare_map.set(uniqueKey, true);
+        daily_keyword_map.add(keyword);
+
+        let msg = "";
+        if (badMatch) {
+            msg = `⚠️🚨🆘 <b>${keyword} 위험 감지</b> 🆘🚨⚠️\n\n` +
+                `🚨 <b>위험 상황:</b> #${escapeHTML(keyword)}\n` +
+                `❌ <b>악재 단어:</b> #${escapeHTML(badMatch[0])}\n`;
+        } else {
+            msg = `🔔 <b>바이오 호재 탐지</b>\n\n` +
+                `📌 <b>종목:</b> #${escapeHTML(keyword)}\n` +
+                `🎯 <b>탐지단어:</b> #${escapeHTML(goodMatch[0])}\n`;
+        }
+
+        if (context && context.length > 10) msg += `📝 <b>내용확인:</b> <code>${escapeHTML(context)}</code>\n\n`;
+        msg += `📰 <b>매체:</b> ${news.site} | ⌚ <b>시간:</b> ${news.time}\n` +
+            `📝 <b>제목:</b> ${escapeHTML(news.title)}\n\n` +
+            `🔗 <b>기사링크:</b> ${news.link}`;
+
+        bot.sendMessage(chatId, msg, { parse_mode: 'HTML' });
+        const color = badMatch ? "\x1b[31m" : "\x1b[32m";
+        console.log(`${color}[전송][${badMatch ? '악재' : '호재'}][${keyword}] ${news.title}\x1b[0m`);
     }
     if (check) playAlert = setTimeout(() => runMonitoring(chatId), 4000 + Math.random() * 1000);
 }
 
 bot.onText(/\/on/, (msg) => {
     check = true;
-    bot.sendMessage(msg.chat.id, "🚀 <b>약업닷컴 정밀 스캔 가동</b>");
+    bot.sendMessage(msg.chat.id, "🚀 <b>정밀 분석 가동 (바이젠셀 악재 감지 포함)</b>");
     runMonitoring(msg.chat.id);
 });
 
