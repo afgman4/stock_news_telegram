@@ -6,7 +6,7 @@ const https = require('https');
 const { performance } = require('perf_hooks');
 const crypto = require('crypto');
 
-const token = '8580951991:AAGVAlC_sjm7g8vYBlU1yaD4NL0EZ1MwHbg';
+const token = '';
 const bot = new TelegramBot(token, { polling: true });
 
 let check = false;
