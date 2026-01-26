@@ -61,8 +61,8 @@ async function runMonitoring(chatId) {
 
     // --- [시간 제한 로직] ---
     if (!isTestMode && (currentHour < START_HOUR || currentHour >= END_HOUR)) {
-        console.log(`[${logTime()}] 😴 휴식 시간 (테스트 모드 아님). 10분 후 재확인.`);
-        playAlert = setTimeout(() => runMonitoring(chatId), 10 * 60 * 1000);
+        console.log(`[${logTime()}] 😴 휴식 시간 (테스트 모드 아님). 5초 후 재확인.`);
+        playAlert = setTimeout(() => runMonitoring(chatId), 5000);
         return;
     }
 
