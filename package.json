@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/afgman4/naver_stock_news_telegram#readme",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "axios": "^0.19.2",
     "cheerio": "^1.0.0-rc.3",
     "iconv-lite": "^0.5.1",
