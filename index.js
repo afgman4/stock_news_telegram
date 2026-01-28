@@ -6,7 +6,7 @@ const https = require('https');
 const { performance } = require('perf_hooks');
 const crypto = require('crypto');
 
-const token = '';
+const token = '8580951991:AAGVAlC_sjm7g8vYBlU1yaD4NL0EZ1MwHbg';
 const bot = new TelegramBot(token, { polling: true });
 
 let check = false;
@@ -20,11 +20,17 @@ let last_reset_date = moment().format('YYYYMMDD');
 const START_HOUR = 8;
 const END_HOUR = 20;
 
-const myKeywords = ['바이젠셀', '코아스템켐온', '비피도', '큐리오시스', '젠큐릭스', '큐라클', '압타바이오', '퓨쳐켐', '메지온', '지아이이노베이션', '에이프릴바이오', '큐리언트', 
-                    '티움바이오', '앱클론', '오스코텍', '박셀바이오', '지씨셀', '셀리드', '제넥신', '유틸렉스', '고바이오랩', '올릭스', '코오롱티슈진', '디앤디파마텍', '보로노이', 
-                    '샤페론', '브릿지바이오테라퓨틱스', '에스씨엠생명과학', '카이노스메드', '이수앱지스', '안트로젠', '아이진', '펩트론', '인벤티지랩', '큐로셀', '바이오다인', '메드팩토', 
-                    '와이바이오로직스', '에이비온', '지노믹트리', '파로스아이바이오', '신테카바이오', '에스엘바이오닉스', '에이비엘바이오', '지투지바이오', '나이벡', '레고켐바이오', '에스티팜',
-                    '디앤디파마텍','에임드바이오','오름테라퓨틱','에이프릴바이오'];
+const myKeywords = [
+  '바이젠셀', '코아스템켐온', '비피도', '큐리오시스', '젠큐릭스', '큐라클', '압타바이오', '퓨쳐켐',
+  '메지온', '지아이이노베이션', '에이프릴바이오', '큐리언트', '티움바이오', '앱클론', '오스코텍', '박셀바이오',
+  '지씨셀', '제넥신', '고바이오랩', '올릭스', '코오롱티슈진', '디앤디파마텍', '보로노이', '샤페론',
+  '브릿지바이오테라퓨틱스', '이수앱지스', '안트로젠', '펩트론', '인벤티지랩', '큐로셀', '바이오다인', '메드팩토',
+  '와이바이오로직스', '에이비온', '지노믹트리', '파로스아이바이오', '신테카바이오', '에스엘바이오닉스', '에이비엘바이오', '지투지바이오',
+  '나이벡', '레고켐바이오', '에스티팜', '에임드바이오', '오름테라퓨틱', '알테오젠', '리가켐바이오', '툴젠',
+  '삼천당제약', '동아에스티'
+];
+
+
 
 // 호재 패턴: '결과보고서', '유의성 확보', '지표 달성' 등 긍정 문구 강화
 const goodNewsPattern = new RegExp("(CSR|톱라인|Top-line|FDA|승인|허가|심사.*?(통과|승인)|획득|NDA|임상\\s*[1-3]상|결과보고서|성공|L/O|기술\\s*수출|계약|공급|체결|통계적\\s*유의성|유의성\\s*확보|지표\\s*달성|만장일치|확보|)", "i");
@@ -75,30 +81,59 @@ const now = moment();
 
     let fetchTasks = [
         ...Object.entries(rssMap).map(async ([site, url]) => {
+
+            const start = performance.now(); // 측정 시작
+
             try {
                 const res = await axios.get(url, getAxiosConfig());
                 const $ = cheerio.load(res.data, { xmlMode: true });
-                return $('item').map((i, el) => ({ title: $(el).find('title').text().trim(), link: $(el).find('link').text().trim(), site, time: logTime() })).get().slice(0, 15);
-            } catch (e) { return []; }
+                const items = $('item').map((i, el) => ({
+                    title: $(el).find('title').text().trim(),
+                    link: $(el).find('link').text().trim(),
+                    site,
+                    time: logTime()
+                })).get().slice(0, 15);
+                
+                const duration = (performance.now() - start).toFixed(0);
+                console.log(`📡 [RSS] ${site.padEnd(6)} | 응답: ${duration}ms | 조회: ${items.length}건`);
+                return items;
+            } catch (e) {
+                console.log(`❌ [RSS] ${site.padEnd(6)} | 에러 발생`);
+                return [];
+            }
         }),
         ...Object.entries(scrapMap).map(async ([site, cfg]) => {
+
+            const start = performance.now(); // 측정 시작
+            
             try {
                 const res = await axios.get(cfg.url, getAxiosConfig());
                 const $ = cheerio.load(res.data);
-                return $(cfg.selector).map((i, el) => {
+                const items = $(cfg.selector).map((i, el) => {
                     let title = $(el).find(cfg.titleSub).text().replace(/\s+/g, ' ').trim();
                     let link = $(el).find(cfg.linkSub).attr('href');
                     if (cfg.isEdaily && link) {
                         const match = link.match(/'(\d+)'/);
                         if (match) link = `https://www.edaily.co.kr/news/read?newsId=${match[1]}`;
-                    } else if (link && !link.startsWith('http')) { link = (cfg.baseUrl || new URL(cfg.url).origin) + link; }
+                    } else if (link && !link.startsWith('http')) {
+                        link = (cfg.baseUrl || new URL(cfg.url).origin) + link;
+                    }
                     return title && title.length > 5 ? { title, link, site, time: logTime() } : null;
                 }).get().filter(n => n).slice(0, 15);
-            } catch (e) { return []; }
+
+                const duration = (performance.now() - start).toFixed(0);
+                console.log(`🌐 [SCR] ${site.padEnd(6)} | 응답: ${duration}ms | 조회: ${items.length}건`);
+                return items;
+            } catch (e) {
+                console.log(`❌ [SCR] ${site.padEnd(6)} | 에러 발생`);
+                return [];
+            }
         })
     ];
 
     const allNews = (await Promise.all(fetchTasks)).flat();
+
+    console.log(`📊 [총합] 전체 수집 뉴스: ${allNews.length}건`);
 
     // --- 핵심 모니터링 로직 수정 부분 ---
     for (const news of allNews) {
@@ -112,6 +147,7 @@ const now = moment();
         // [1단계] 제목에서 즉시 패턴 확인
         let goodMatch = news.title.match(goodNewsPattern);
         let badMatch = news.title.match(badNewsPattern);
+
 
         // [2단계] 바이젠셀 특수 로직: 제목에 악재 있으면 즉시 전송 후 다음 기사로 skip
         if (matchedKeyword === '바이젠셀' && badMatch) {
